@@ -57,7 +57,7 @@ def dumpIntoFile(center, session):
     msg += '==================================== \n\n'
 
     with LOCK:
-        with open('slots-finder.log', 'a') as slotFinderLogs:
+        with open('slots-finder.txt', 'a') as slotFinderLogs:
             slotFinderLogs.write(msg)
 
 
