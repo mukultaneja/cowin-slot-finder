@@ -1,13 +1,15 @@
 {
-	"searchBy": "district",
 	"dataPoints": [{
 		"district_id": 505,
+		"date": ""
+	},{
+		"district_id": 506,
 		"date": ""
 	}],
 	"communicationType": "system",
 	"searchCriteria": {
-		"minAgeLimit": "18,45",
-	   "vaccineName": "COVISHIELD,COVAXIN",
-	   "feeType": "Free,Paid"
+	   "minAgeLimit": "18, 45",
+	   "vaccineName": "COVISHIELD, COVAXIN",
+	   "feeType": "Free, Paid"
 	 }
 }
