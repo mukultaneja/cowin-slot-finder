@@ -40,7 +40,7 @@ def notifySlot(communicationType):
 
         if platform.system().lower() == 'windows':
             from plyer import notification
-            notification.notify(title=title, message=message, timeout=60)
+            notification.notify(title=title, message=message, timeout=1)
 
 
 def dumpIntoFile(center, session):
