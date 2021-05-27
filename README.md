@@ -2,7 +2,8 @@
 
 A tool to find available vaccination slots for covid vaccine using Co-WIN [public](https://apisetu.gov.in/public/api/cowin) APIs.
 
-`slotFinder.py` is a python script that helps to search available slots using pincodes and districts. It is a continous, multi-processing based script that can take multiple pincodes and districts to find slots at a time and smart enough to manage time difference between multiple requests to the server. The intention is to never cross `100 requests in 5 mins` boundary imposed by the Co-Win public APIs.
+`slotFinder.py` is a python script that helps to search available slots using pincodes and districts. It is a continous, automated and, multi-processing based script that can take multiple pincodes and districts to find slots at a time and smart enough to manage time difference between multiple requests to the server. The intention is to never cross `100 requests in 5 mins` boundary imposed by the Co-Win public APIs.
+
 This script is capable enough to filter & send requests to find district-wise slots/pincode-wise slots based on provided data points. Once you start the script, it keeps polling the slots and starts notifying as soon as once available for you.
 
 # Requirements
