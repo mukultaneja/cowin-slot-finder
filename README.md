@@ -37,6 +37,8 @@ Below are the key values you could define part of your search criteria,
 	- minAgeLimit: String, Either could be set as a single age value e.g "18"/"45" or multiple age values e.g "18, 45"
 	- vaccineName: String, Either could be set as a single vaccine name e.g "COVISHIELD"/"COVAXIN" or multiple names e.g "COVISHIELD, COVAXIN"
 	- feeType: String, Either could be as e.g "Free"/"Paid" or "Free, Paid"
+	- dose1: Boolean, Could be true or false
+	- dose2: Boolean, Could be true or false
 
 
 Feel free to use/modify the script and raise issues if it is not working for you as expected.

@@ -69,6 +69,8 @@ def dumpIntoFile(center, session):
     msg += 'Slots = {0}\n'.format(session.get('slots'))
     msg += 'Pincode = {0}\n'.format(center.get('pincode'))
     msg += 'District Name = {0}\n'.format(center.get('district_name'))
+    msg += 'Available Dose1 = {0}\n'.format(session.get("available_capacity_dose1"))
+    msg += 'Available Dose2 = {0}\n'.format(session.get("available_capacity_dose2"))
     msg += '==================================== \n\n'
 
     with LOCK:
@@ -77,18 +79,16 @@ def dumpIntoFile(center, session):
 
 
 def isSlotAvailable(response, searchCriteria):
+    ageLimits = [ageLimit.strip() for ageLimit in searchCriteria.get('minAgeLimit').split(',')]
+    vaccines = [vaccine.strip() for vaccine in searchCriteria.get('vaccineName').split(',')]
+    feeTypes = [feeType.strip() for feeType in searchCriteria.get('feeType').split(',')]
+
     for center in response.get('centers'):
         sessions = center.get('sessions')
         for session in sessions:
             if session.get('available_capacity') > 0:
-                ageLimits = searchCriteria.get('minAgeLimit').split(',')
-                ageLimits = [ageLimit.strip() for ageLimit in ageLimits]
                 if str(session.get('min_age_limit')) in ageLimits:
-                    vaccines = searchCriteria.get('vaccineName').split(',')
-                    vaccines = [vaccine.strip() for vaccine in vaccines]
                     if session.get('vaccine') in vaccines:
-                        feeTypes = searchCriteria.get('feeType').split(',')
-                        feeTypes = [feeType.strip() for feeType in feeTypes]
                         if center.get('fee_type') in feeTypes:
                             msg = "{0}, {1}, {2} {3} {4} {5}"
                             msg = msg.format(session.get('available_capacity'),
@@ -97,10 +97,20 @@ def isSlotAvailable(response, searchCriteria):
                                              session.get('date'),
                                              session.get('vaccine'),
                                              center.get("fee_type"))
-                            dumpIntoFile(center, session)
-                            currentProcessName = multiprocessing.current_process().name
-                            logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                            return True
+                            # checking dose1 availablity by default
+                            if searchCriteria.get("dose1", True) and session.get("available_capacity_dose1") > 0:
+                                msg += ' ' + str(session.get("available_capacity_dose1"))
+                                dumpIntoFile(center, session)
+                                currentProcessName = multiprocessing.current_process().name
+                                logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
+                                return True
+
+                            elif searchCriteria.get("dose2") and session.get("available_capacity_dose2") > 0:
+                                msg += ' ' + str(session.get("available_capacity_dose2"))
+                                dumpIntoFile(center, session)
+                                currentProcessName = multiprocessing.current_process().name
+                                logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
+                                return True
     return False
 
 

@@ -10,6 +10,8 @@
 	"searchCriteria": {
 	   "minAgeLimit": "18, 45",
 	   "vaccineName": "COVISHIELD, COVAXIN",
-	   "feeType": "Free, Paid"
+	   "feeType": "Free, Paid",
+	   "dose1": true,
+	   "dose2": false
 	 }
 }
