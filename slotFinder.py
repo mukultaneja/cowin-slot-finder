@@ -10,9 +10,11 @@ usage
     - python3 slotFinder.py slotInfo.json
 author
     - Mukul Taneja
+    - mukultaneja91@gmail.com
 '''
 
 import os
+import sys
 import json
 import time
 import beepy
@@ -23,9 +25,22 @@ import argparse
 import multiprocessing
 from datetime import datetime, timedelta
 from multiprocessing import Process, Lock
+from logging.handlers import TimedRotatingFileHandler
 
-logging.basicConfig(level=logging.INFO,
-        format="%(name)s - %(asctime)s - %(levelname)s - %(message)s")
+
+formatter = logging.Formatter("%(name)s - %(asctime)s - %(levelname)s - %(message)s")
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(formatter)
+console_handler.setLevel(logging.INFO)
+
+file_handler = TimedRotatingFileHandler("slots-finder.log", when='midnight')
+file_handler.setFormatter(formatter)
+file_handler.setLevel(logging.DEBUG)
+
+logger = logging.getLogger('root')
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+logger.setLevel(logging.DEBUG)
 
 LOCK = Lock()
 
@@ -84,7 +99,7 @@ def isSlotAvailable(response, searchCriteria):
                                              center.get("fee_type"))
                             dumpIntoFile(center, session)
                             currentProcessName = multiprocessing.current_process().name
-                            logging.info("{0} ==> Found with {1}".format(currentProcessName, msg))
+                            logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
                             return True
     return False
 
@@ -101,17 +116,18 @@ def getSlotInformation(dataPoint, searchCriteria, communicationType):
         lookupDate = today if currentHour <= 16 else today + timedelta(days=1)
         dataPoint["date"] = datetime.strftime(lookupDate, "%d-%m-%Y")
 
-    logging.info("Sending request to '{0}' for '{1}'".format(url, dataPoint))
+    logger.info("Sending request to '{0}' for '{1}'".format(url, dataPoint))
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36'
     }
 
     response = requests.get(url, params=dataPoint, headers=headers)
     msg = "Process Name: {0} ==> Resposne Code {1}"
-    logging.info(msg.format(multiprocessing.current_process().name, response.status_code))
+    logger.info(msg.format(multiprocessing.current_process().name, response.status_code))
+    logger.debug(response.json())
 
     if response.status_code != 200:
-        logging.info(response.text)
+        logger.info(response.text)
         return
 
     if isSlotAvailable(response.json(), searchCriteria):
@@ -123,7 +139,7 @@ def main(inputData):
     dataPoints = inputData.get("dataPoints", None)
 
     if not dataPoints:
-        logging.info("No data points to poll")
+        logger.info("No data points to poll")
         return
 
     numOfDataPoints = len(dataPoints)
@@ -135,7 +151,7 @@ def main(inputData):
     while True:
         if timeCounter % 60 == 0:
             msg = "======= Number of sent requests {0} in {1} min(s) ======="
-            logging.info(msg.format(numsOfSentRequestsPerMin, minutes))
+            logger.info(msg.format(numsOfSentRequestsPerMin, minutes))
             minutes += 1
 
         searchProcesses = list()
@@ -149,7 +165,7 @@ def main(inputData):
         for process in searchProcesses:
             process.join()
 
-        logging.info("Sleeping for {0} sec(s)...".format(timeToSleep))
+        logger.info("Sleeping for {0} sec(s)...".format(timeToSleep))
         time.sleep(timeToSleep)
         timeCounter += timeToSleep
 
@@ -166,7 +182,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.input):
         raise FileNotFoundError("No file found named {0}".format(args.input))
 
-    logging.info("Starting Slot-Finder with {0}".format(args))
+    logger.info("Starting Slot-Finder with {0}".format(args))
     inputData = dict()
     with open(args.input) as inputFile:
         inputData = json.load(inputFile)
