@@ -117,7 +117,6 @@ def getSlotInformation(dataPoint, searchCriteria, communicationType):
     url = "https://cdn-api.co-vin.in/api/v2/appointment/sessions/public"
     endpoint = "findByPin" if dataPoint.get("pincode") else "findByDistrict"
     url = "{0}/{1}".format(url, endpoint)
-
     if not dataPoint.get("date", None):
         currentHour = datetime.now().hour
         today = datetime.now()
@@ -134,7 +133,6 @@ def getSlotInformation(dataPoint, searchCriteria, communicationType):
     msg = "Process Name: {0} ==> Resposne Code {1}"
     logger.info(msg.format(multiprocessing.current_process().name, response.status_code))
     logger.debug(response.json())
-
     if response.status_code != 200:
         logger.info(response.text)
         return
@@ -146,7 +144,6 @@ def getSlotInformation(dataPoint, searchCriteria, communicationType):
 def main(inputData):
     numsOfSentRequestsPerMin = timeCounter = minutes = 0
     dataPoints = inputData.get("dataPoints", None)
-
     if not dataPoints:
         logger.info("No data points to poll")
         return
@@ -173,7 +170,6 @@ def main(inputData):
 
         for process in searchProcesses:
             process.join()
-
         logger.info("Sleeping for {0} sec(s)...".format(timeToSleep))
         time.sleep(timeToSleep)
         timeCounter += timeToSleep
