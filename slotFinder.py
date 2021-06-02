@@ -58,17 +58,17 @@ def notifySlot(communicationType):
             notification.notify(title=title, message=message, timeout=1)
 
 
-def dumpIntoFile(center, session):
+def dumpIntoFile(session):
     msg = '====== Found a slot near you.. ====== \n'
-    msg += 'Name = {0}\n'.format(center.get('name'))
-    msg += 'Address = {0}\n'.format(center.get('address'))
+    msg += 'Name = {0}\n'.format(session.get('name'))
+    msg += 'Address = {0}\n'.format(session.get('address'))
     msg += 'Date = {0}\n'.format(session.get('date'))
     msg += 'Available Capacity = {0}\n'.format(session.get('available_capacity'))
     msg += 'Vaccine = {0}\n'.format(session.get('vaccine'))
-    msg += 'Fee Type = {0}\n'.format(center.get('fee_type'))
+    msg += 'Fee Type = {0}\n'.format(session.get('fee'))
     msg += 'Slots = {0}\n'.format(session.get('slots'))
-    msg += 'Pincode = {0}\n'.format(center.get('pincode'))
-    msg += 'District Name = {0}\n'.format(center.get('district_name'))
+    msg += 'Pincode = {0}\n'.format(session.get('pincode'))
+    msg += 'District Name = {0}\n'.format(session.get('district_name'))
     msg += 'Available Dose1 = {0}\n'.format(session.get("available_capacity_dose1"))
     msg += 'Available Dose2 = {0}\n'.format(session.get("available_capacity_dose2"))
     msg += '==================================== \n\n'
@@ -83,40 +83,39 @@ def isSlotAvailable(response, searchCriteria):
     vaccines = [vaccine.strip() for vaccine in searchCriteria.get('vaccineName').split(',')]
     feeTypes = [feeType.strip() for feeType in searchCriteria.get('feeType').split(',')]
 
-    for center in response.get('centers'):
-        sessions = center.get('sessions')
-        for session in sessions:
-            if session.get('available_capacity') > 0:
-                if str(session.get('min_age_limit')) in ageLimits:
-                    if session.get('vaccine') in vaccines:
-                        if center.get('fee_type') in feeTypes:
-                            msg = "{0}, {1}, {2} {3} {4} {5}"
-                            msg = msg.format(session.get('available_capacity'),
-                                             center.get('pincode'),
-                                             center.get('name'),
-                                             session.get('date'),
-                                             session.get('vaccine'),
-                                             center.get("fee_type"))
-                            # checking dose1 availablity by default
-                            if searchCriteria.get("dose1", True) and session.get("available_capacity_dose1") > 0:
-                                msg += ' ' + str(session.get("available_capacity_dose1"))
-                                dumpIntoFile(center, session)
-                                currentProcessName = multiprocessing.current_process().name
-                                logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                                return True
+    for session in response.get('sessions'):
+        if session.get('available_capacity') > 0:
+            if str(session.get('min_age_limit')) in ageLimits:
+                if session.get('vaccine') in vaccines:
+                    feeType = "Free" if session.get('fee') == "0" else "Paid"
+                    if feeType in feeTypes:
+                        msg = "{0}, {1}, {2} {3} {4} {5}"
+                        msg = msg.format(session.get('available_capacity'),
+                                         session.get('pincode'),
+                                         session.get('name'),
+                                         session.get('date'),
+                                         session.get('vaccine'),
+                                         session.get("fee"))
+                        # checking dose1 availablity by default
+                        if searchCriteria.get("dose1", True) and session.get("available_capacity_dose1") > 0:
+                            msg += ' ' + str(session.get("available_capacity_dose1"))
+                            dumpIntoFile(session)
+                            currentProcessName = multiprocessing.current_process().name
+                            logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
+                            return True
 
-                            elif searchCriteria.get("dose2") and session.get("available_capacity_dose2") > 0:
-                                msg += ' ' + str(session.get("available_capacity_dose2"))
-                                dumpIntoFile(center, session)
-                                currentProcessName = multiprocessing.current_process().name
-                                logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                                return True
+                        elif searchCriteria.get("dose2") and session.get("available_capacity_dose2") > 0:
+                            msg += ' ' + str(session.get("available_capacity_dose2"))
+                            dumpIntoFile(session)
+                            currentProcessName = multiprocessing.current_process().name
+                            logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
+                            return True
     return False
 
 
 def getSlotInformation(dataPoint, searchCriteria, communicationType):
     url = "https://cdn-api.co-vin.in/api/v2/appointment/sessions/public"
-    endpoint = "calendarByPin" if dataPoint.get("pincode") else "calendarByDistrict"
+    endpoint = "findByPin" if dataPoint.get("pincode") else "findByDistrict"
     url = "{0}/{1}".format(url, endpoint)
 
     if not dataPoint.get("date", None):
