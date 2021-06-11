@@ -45,10 +45,12 @@ logger.setLevel(logging.DEBUG)
 LOCK = Lock()
 
 
-def notifySlot(communicationType):
+def notifySlot(communicationType, silentNotifier):
     if communicationType == 'system':
         message, title = 'Co-Win Slot Found', 'Success'
-        beepy.beep(sound="ping")
+        if not silentNotifier:
+            beepy.beep(sound="ping")
+
         if platform.system().lower() == 'darwin':
             command = f'''osascript -e 'display notification "{message}" with title "{title}"' '''
             os.system(command)
@@ -58,7 +60,7 @@ def notifySlot(communicationType):
             notification.notify(title=title, message=message, timeout=1)
 
 
-def dumpIntoFile(session):
+def dumpIntoFile(session, analyzerFlag):
     msg = '====== Found a slot near you.. ====== \n'
     msg += 'Name = {0}\n'.format(session.get('name'))
     msg += 'Address = {0}\n'.format(session.get('address'))
@@ -76,9 +78,26 @@ def dumpIntoFile(session):
     with LOCK:
         with open('slots-finder.txt', 'a') as slotFinderLogs:
             slotFinderLogs.write(msg)
+        if analyzerFlag:
+            slot = {
+                'date': session.get('date'),
+                'capacity': session.get('available_capacity'),
+                'fee': "Free" if session.get('fee') == "0" else "Paid",
+                'dose1': session.get("available_capacity_dose1"),
+                'dose2': session.get("available_capacity_dose2"),
+                'vaccine': session.get('vaccine'),
+                'bookingTime': datetime.strftime(datetime.now(), '%d-%m-%Y %H:%M:%S'),
+                'pincode': session.get('pincode')
+            }
+            data = list()
+            if os.path.exists('slots-finder.json'):
+                data = json.load(open('slots-finder.json'))
+            data.append(slot)
+            with open('slots-finder.json', 'w') as slots:
+                json.dump(data, slots, indent=4)
 
 
-def isSlotAvailable(response, searchCriteria):
+def getAvailableSlot(response, searchCriteria):
     ageLimits = [ageLimit.strip() for ageLimit in searchCriteria.get('minAgeLimit').split(',')]
     vaccines = [vaccine.strip() for vaccine in searchCriteria.get('vaccineName').split(',')]
     feeTypes = [feeType.strip() for feeType in searchCriteria.get('feeType').split(',')]
@@ -99,21 +118,17 @@ def isSlotAvailable(response, searchCriteria):
                         # checking dose1 availablity by default
                         if searchCriteria.get("dose1", True) and session.get("available_capacity_dose1") > 0:
                             msg += ' ' + str(session.get("available_capacity_dose1"))
-                            dumpIntoFile(session)
                             currentProcessName = multiprocessing.current_process().name
                             logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                            return True
-
                         elif searchCriteria.get("dose2") and session.get("available_capacity_dose2") > 0:
                             msg += ' ' + str(session.get("available_capacity_dose2"))
-                            dumpIntoFile(session)
                             currentProcessName = multiprocessing.current_process().name
                             logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                            return True
-    return False
+                        return session
+    return
 
 
-def getSlotInformation(dataPoint, searchCriteria, communicationType):
+def findSlot(dataPoint, extraArgs):
     url = "https://cdn-api.co-vin.in/api/v2/appointment/sessions/public"
     endpoint = "findByPin" if dataPoint.get("pincode") else "findByDistrict"
     url = "{0}/{1}".format(url, endpoint)
@@ -121,7 +136,7 @@ def getSlotInformation(dataPoint, searchCriteria, communicationType):
         currentHour = datetime.now().hour
         today = datetime.now()
         # after 5 PM we want to search for tomorrow
-        lookupDate = today if currentHour <= 16 else today + timedelta(days=1)
+        lookupDate = today if currentHour <= 13 else today + timedelta(days=1)
         dataPoint["date"] = datetime.strftime(lookupDate, "%d-%m-%Y")
 
     logger.info("Sending request to '{0}' for '{1}'".format(url, dataPoint))
@@ -137,39 +152,48 @@ def getSlotInformation(dataPoint, searchCriteria, communicationType):
         logger.info(response.text)
         return
 
-    if isSlotAvailable(response.json(), searchCriteria):
-        notifySlot(communicationType)
+    availableSlot = getAvailableSlot(response.json(), extraArgs.get('searchCriteria'))
+    if availableSlot:
+        dumpIntoFile(availableSlot, extraArgs.get('analyzerFlag'))
+        notifySlot(extraArgs.get('communicationType'), extraArgs.get('silentNotifier'))
 
 
-def main(inputData):
-    numsOfSentRequestsPerMin = timeCounter = minutes = 0
+def main(args):
+    inputData = dict()
+    with open(args.input) as inputFile:
+        inputData = json.load(inputFile)
     dataPoints = inputData.get("dataPoints", None)
     if not dataPoints:
         logger.info("No data points to poll")
         return
-
     numOfDataPoints = len(dataPoints)
     numsOfRequestsPerMin = 20 # Arogya setu app allows 100 requests per 5 mins
     timeToSleep = numOfDataPoints * (60 // numsOfRequestsPerMin)
-    searchCriteria = inputData.get("searchCriteria")
-    communicationType =  inputData.get("communicationType", 'system')
+    extraArgs = {
+        'searchCriteria': inputData.get("searchCriteria"),
+        'communicationType': inputData.get("communicationType", 'system'),
+        'silentNotifier': args.silent,
+        'analyzerFlag': args.analyze
+
+    }
+    numsOfSentRequestsPerMin = timeCounter = minutes = 0
 
     while True:
+        searchProcesses = list()
         if timeCounter % 60 == 0:
             msg = "======= Number of sent requests {0} in {1} min(s) ======="
             logger.info(msg.format(numsOfSentRequestsPerMin, minutes))
             minutes += 1
 
-        searchProcesses = list()
         for dataPoint in dataPoints:
             numsOfSentRequestsPerMin += 1
-            process = Process(target=getSlotInformation,
-                              args=(dataPoint, searchCriteria, communicationType))
+            process = Process(target=findSlot, args=(dataPoint, extraArgs))
             process.start()
             searchProcesses.append(process)
 
         for process in searchProcesses:
             process.join()
+
         logger.info("Sleeping for {0} sec(s)...".format(timeToSleep))
         time.sleep(timeToSleep)
         timeCounter += timeToSleep
@@ -178,6 +202,10 @@ def main(inputData):
 def parseCmd():
     parser = argparse.ArgumentParser()
     parser.add_argument('input', type=str, help='Input JSON file')
+    parser.add_argument('--silent', help='a flag for a slient notifier',
+                        action='store_true')
+    parser.add_argument('--analyze', help='a flag to start slot analysis',
+                        action='store_true')
 
     return parser.parse_args()
 
@@ -188,9 +216,5 @@ if __name__ == "__main__":
         raise FileNotFoundError("No file found named {0}".format(args.input))
 
     logger.info("Starting Slot-Finder with {0}".format(args))
-    inputData = dict()
-    with open(args.input) as inputFile:
-        inputData = json.load(inputFile)
-
-    main(inputData)
+    main(args)
 
