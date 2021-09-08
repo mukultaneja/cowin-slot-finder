@@ -1,3 +1,4 @@
 beepy
 plyer
 requests
+prettytable~=2.1

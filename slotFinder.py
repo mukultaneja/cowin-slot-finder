@@ -23,12 +23,14 @@ import requests
 import platform
 import argparse
 import multiprocessing
+from prettytable import PrettyTable
 from datetime import datetime, timedelta
 from multiprocessing import Process, Lock
 from logging.handlers import TimedRotatingFileHandler
 
 
-formatter = logging.Formatter("%(name)s - %(asctime)s - %(levelname)s - %(message)s")
+formatter = logging.Formatter(
+    "%(name)s - %(asctime)s - %(levelname)s - %(message)s")
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(formatter)
 console_handler.setLevel(logging.INFO)
@@ -60,26 +62,11 @@ def notifySlot(communicationType, silentNotifier):
             notification.notify(title=title, message=message, timeout=1)
 
 
-def dumpIntoFile(session, analyzerFlag):
-    msg = '====== Found a slot near you.. ====== \n'
-    msg += 'Name = {0}\n'.format(session.get('name'))
-    msg += 'Address = {0}\n'.format(session.get('address'))
-    msg += 'Date = {0}\n'.format(session.get('date'))
-    msg += 'Available Capacity = {0}\n'.format(session.get('available_capacity'))
-    msg += 'Vaccine = {0}\n'.format(session.get('vaccine'))
-    msg += 'Fee Type = {0}\n'.format(session.get('fee'))
-    msg += 'Slots = {0}\n'.format(session.get('slots'))
-    msg += 'Pincode = {0}\n'.format(session.get('pincode'))
-    msg += 'District Name = {0}\n'.format(session.get('district_name'))
-    msg += 'Available Dose1 = {0}\n'.format(session.get("available_capacity_dose1"))
-    msg += 'Available Dose2 = {0}\n'.format(session.get("available_capacity_dose2"))
-    msg += '==================================== \n\n'
-
+def dumpIntoFile(availableSlots):
     with LOCK:
-        with open('slots-finder.txt', 'a') as slotFinderLogs:
-            slotFinderLogs.write(msg)
-        if analyzerFlag:
-            slot = {
+        slots = list()
+        for session in availableSlots:
+            slots.append({
                 'date': session.get('date'),
                 'capacity': session.get('available_capacity'),
                 'fee': "Free" if session.get('fee') == "0" else "Paid",
@@ -88,44 +75,56 @@ def dumpIntoFile(session, analyzerFlag):
                 'vaccine': session.get('vaccine'),
                 'bookingTime': datetime.strftime(datetime.now(), '%d-%m-%Y %H:%M:%S'),
                 'pincode': session.get('pincode')
-            }
-            data = list()
-            if os.path.exists('slots-finder.json'):
-                data = json.load(open('slots-finder.json'))
-            data.append(slot)
-            with open('slots-finder.json', 'w') as slots:
-                json.dump(data, slots, indent=4)
+            })
+        data = list()
+        if os.path.exists('slots-finder.json'):
+            f = open('slots-finder.json')
+            data = json.load(f)
+            f.close()
+        data.extend(slot)
+        with open('slots-finder.json', 'w') as f:
+            json.dump(data, f, indent=4)
 
 
 def getAvailableSlot(response, searchCriteria):
-    ageLimits = [ageLimit.strip() for ageLimit in searchCriteria.get('minAgeLimit').split(',')]
-    vaccines = [vaccine.strip() for vaccine in searchCriteria.get('vaccineName').split(',')]
-    feeTypes = [feeType.strip() for feeType in searchCriteria.get('feeType').split(',')]
+    ageLimits = [ageLimit.strip()
+                 for ageLimit in searchCriteria.get('minAgeLimit').split(',')]
+    vaccines = [vaccine.strip()
+                for vaccine in searchCriteria.get('vaccineName').split(',')]
+    feeTypes = [feeType.strip()
+                for feeType in searchCriteria.get('feeType').split(',')]
 
+    availableSlots = list()
+    slotTable = PrettyTable()
+    slotTable.field_names = ['Name', 'PinCode', 'Vaccine Name', 'Fee',
+                             'Date', 'Dose1', 'Dose2']
     for session in response.get('sessions'):
         if session.get('available_capacity') > 0:
             if str(session.get('min_age_limit')) in ageLimits:
                 if session.get('vaccine') in vaccines:
                     feeType = "Free" if session.get('fee') == "0" else "Paid"
                     if feeType in feeTypes:
-                        msg = "{0}, {1}, {2} {3} {4} {5}"
-                        msg = msg.format(session.get('available_capacity'),
-                                         session.get('pincode'),
-                                         session.get('name'),
-                                         session.get('date'),
-                                         session.get('vaccine'),
-                                         session.get("fee"))
-                        # checking dose1 availablity by default
-                        if searchCriteria.get("dose1", True) and session.get("available_capacity_dose1") > 0:
-                            msg += ' ' + str(session.get("available_capacity_dose1"))
-                            currentProcessName = multiprocessing.current_process().name
-                            logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                        elif searchCriteria.get("dose2") and session.get("available_capacity_dose2") > 0:
-                            msg += ' ' + str(session.get("available_capacity_dose2"))
-                            currentProcessName = multiprocessing.current_process().name
-                            logger.info("{0} ==> Found with {1}".format(currentProcessName, msg))
-                        return session
-    return
+                        if searchCriteria.get("dose1") and \
+                                session.get("available_capacity_dose1") > 0:
+                            availableSlots.append(session)
+                        elif searchCriteria.get("dose2") and \
+                                session.get("available_capacity_dose2") > 0:
+                            availableSlots.append(session)
+
+    for availableSlot in availableSlots:
+        slotTable.add_row([availableSlot.get('name'),
+                           availableSlot.get('pincode'),
+                           availableSlot.get('vaccine'),
+                           availableSlot.get("fee"),
+                           availableSlot.get('date'),
+                           availableSlot.get("available_capacity_dose1"),
+                           availableSlot.get("available_capacity_dose2")])
+
+    if availableSlots:
+        for line in slotTable.get_string().splitlines():
+            print('\t' + line + '\n')
+
+    return availableSlots
 
 
 def findSlot(dataPoint, extraArgs):
@@ -136,7 +135,7 @@ def findSlot(dataPoint, extraArgs):
         currentHour = datetime.now().hour
         today = datetime.now()
         # after 5 PM we want to search for tomorrow
-        lookupDate = today if currentHour <= 13 else today + timedelta(days=1)
+        lookupDate = today if currentHour <= 16 else today + timedelta(days=1)
         dataPoint["date"] = datetime.strftime(lookupDate, "%d-%m-%Y")
 
     logger.info("Sending request to '{0}' for '{1}'".format(url, dataPoint))
@@ -146,16 +145,20 @@ def findSlot(dataPoint, extraArgs):
 
     response = requests.get(url, params=dataPoint, headers=headers)
     msg = "Process Name: {0} ==> Resposne Code {1}"
-    logger.info(msg.format(multiprocessing.current_process().name, response.status_code))
+    msg = msg.format(multiprocessing.current_process().name, response.status_code)
+    logger.info(msg)
     logger.debug(response.json())
     if response.status_code != 200:
         logger.info(response.text)
         return
 
-    availableSlot = getAvailableSlot(response.json(), extraArgs.get('searchCriteria'))
-    if availableSlot:
-        dumpIntoFile(availableSlot, extraArgs.get('analyzerFlag'))
-        notifySlot(extraArgs.get('communicationType'), extraArgs.get('silentNotifier'))
+    availableSlots = getAvailableSlot(
+        response.json(), extraArgs.get('searchCriteria'))
+    if availableSlots:
+        if extraArgs.get('analyzerFlag'):
+            dumpIntoFile(availableSlots)
+        notifySlot(extraArgs.get('communicationType'),
+                   extraArgs.get('silentNotifier'))
 
 
 def main(args):
@@ -167,7 +170,7 @@ def main(args):
         logger.info("No data points to poll")
         return
     numOfDataPoints = len(dataPoints)
-    numsOfRequestsPerMin = 20 # Arogya setu app allows 100 requests per 5 mins
+    numsOfRequestsPerMin = 20  # Arogya setu app allows 100 requests per 5 mins
     timeToSleep = numOfDataPoints * (60 // numsOfRequestsPerMin)
     extraArgs = {
         'searchCriteria': inputData.get("searchCriteria"),
@@ -177,7 +180,6 @@ def main(args):
 
     }
     numsOfSentRequestsPerMin = timeCounter = minutes = 0
-
     while True:
         searchProcesses = list()
         if timeCounter % 60 == 0:
@@ -217,4 +219,3 @@ if __name__ == "__main__":
 
     logger.info("Starting Slot-Finder with {0}".format(args))
     main(args)
-
